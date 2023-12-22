@@ -1,0 +1,175 @@
+---
+title: "Model Building"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)       # Data manipulation
+library(ggplot2)     # Data visualization
+library(readr)       # CSV file reading
+#install.packages("corrplot")
+library(corrplot)    # Correlation plot
+library(stringr)
+library(leaps) # subset selection package
+```
+
+# Data exploration and variable transformation (dummies/label encoder)
+```{r}
+# Load the dataset
+df <- read.csv("hdb_cleaned_2022onwards.csv")
+```
+
+```{r}
+print(df)
+```
+```{r}
+colnames(df)
+```
+```{r}
+# drop all unnecessary columns that will not be relevant for price prediction
+df = subset(df, select = -c(X, month, block, street_name, lease_commence_date, address, latitude, longitude,
+                            school_shortest_dist_name, good_sch_list_within_1km,
+                            mrt_shortest_dist_name, mrt_list_within_1km, mall_shortest_dist_name, 
+                            mall_list_within_1km, communitycentre_shortest_dist_name, 
+                            communitycentre_list_within_1km, eldercare_shortest_dist_name, eldercare_list_within_1km,
+                            hawker_shortest_dist_name, hawker_list_within_1km, supermarket_shortest_dist_name,
+                            supermarket_list_within_1km))
+df
+```
+```{r}
+colnames(df)
+```
+Storey Range
+```{r}
+table(df$storey_range)[order(names(table(df$storey_range)))]
+```
+```{r}
+ggplot(df, aes(x = storey_range)) +
+  geom_histogram(binwidth = 1,stat = "count", fill = "blue", color = "black") +
+  labs(title = "Histogram of Storey Range", x = "Storey Range", y = "Frequency")
+```
+```{r}
+## label encoding for Storey Range
+# The higher the storey_range, the higher the label encoding
+
+# Perform label encoding
+
+# Sort the data frame by 'storey_range' before label encoding
+df = df[order(df$storey_range), ]
+
+# Perform label encoding using the factor function
+df$storey_range_label <- as.numeric(factor(df$storey_range))
+
+# Display the resulting data frame
+print(df[df$storey_range == "49 TO 51",])
+```
+Flat Type
+```{r}
+ggplot(df, aes(x = flat_type)) +
+  geom_histogram(binwidth = 1,stat = "count", fill = "blue", color = "black") +
+  labs(title = "Histogram of Flat Type", x = "Flat Type", y = "Frequency")
+```
+```{r}
+table(df$flat_type)[order(names(table(df$flat_type)))]
+```
+
+```{r}
+# Sort the data frame by 'flat_type' before label encoding
+df = df[order(df$flat_type), ]
+
+# Perform label encoding using the factor function
+df$flat_type_label <- as.numeric(factor(df$flat_type))
+
+# Display the resulting data frame
+print(df[df$flat_type == "EXECUTIVE",])
+```
+Flat Model
+```{r}
+ggplot(df, aes(x = flat_model)) +
+  geom_histogram(binwidth = 1,stat = "count", fill = "blue", color = "black") +
+  labs(title = "Histogram of Flat Model", x = "Flat Model", y = "Frequency") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+```{r}
+table(df$flat_model)
+```
+```{r}
+# Re-categorize flat models into broader categories
+replace_values = c("Model A-Maisonette" = "Maisonette", "Improved-Maisonette" = "Maisonette", "Premium Maisonette" = "Maisonette")
+df$flat_model = str_replace_all(df$flat_model, replace_values)
+
+table(df$flat_model)
+```
+
+```{r}
+# get dummies 
+dummies = model.matrix(~ flat_model-1, data = df)
+
+df = cbind(df, dummies)
+
+```
+
+```{r}
+dummies
+```
+
+Town
+```{r}
+ggplot(df, aes(x = town)) +
+  geom_histogram(binwidth = 1,stat = "count", fill = "blue", color = "black") +
+  labs(title = "Histogram of Town", x = "Town", y = "Frequency") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+```{r}
+# get dummies
+# get dummies 
+dummies = model.matrix(~ town - 1, data = df)
+
+df = cbind(df, dummies)
+df
+```
+Create subset df to contain only columns for machine learning training purposes
+```{r}
+df_ml = df = subset(df, select = -c(town, flat_type, storey_range, flat_model,good_sch_score_sap_gep,good_sch_score))
+df_ml
+```
+```{r}
+## Do we need to ln to change distribution to normal?
+ggplot(df_ml, aes(x = log(resale_price))) +
+  geom_histogram(bin = 100, stat = 'count', fill = "blue", color = "black") +
+  labs(title = "Histogram of Ln Resale Price", x = "Ln Resale Price", y = "Frequency") 
+```
+```{r}
+#add ln(resale_price)
+df_ml['ln_resale_price'] = log(df_ml['resale_price'])
+```
+
+
+```{r}
+colnames(df_ml)
+```
+```{r fig.height=9, fig.width=12}
+correlation_matrix <- cor(df_ml %>% select(resale_price, floor_area_sqm, remaining_lease, school_shortest_dist, good_sch_count_within_1km,
+                                        mrt_shortest_dist, mall_shortest_dist,mrt_count_within_1km,
+                                          mall_shortest_dist, mall_count_within_1km,communitycentre_shortest_dist,communitycentre_count_within_1km,
+                                          eldercare_shortest_dist,eldercare_count_within_1km,hawker_shortest_dist,hawker_count_within_1km,
+                                          supermarket_shortest_dist,supermarket_count_within_1km,distance_to_cbd_km,matured, ln_resale_price))
+corrplot(correlation_matrix, 
+  method = "color",     # Color method for the plot
+   addCoef.col="black", 
+   order = "AOE", 
+   number.cex=0.75)
+
+```
+df_ml should contain all the relevant columns fit for ML training. Might still need to do feature scaling/normalization of predictors, or maybe need to do log transformation to any variables if we need to adhere to normality assumptiobs
+```{r}
+colnames(df_ml)
+```
+
+
+```{r}
+write.csv(df_ml, 'df_ml.csv', row.names=FALSE)
+```
+
+
